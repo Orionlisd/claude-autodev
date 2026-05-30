@@ -465,3 +465,198 @@ ssh.exec_command("nginx -s reload")
 2. **测试全面** - 每个功能都要测试，不能遗漏
 3. **修复彻底** - 修bug要考虑全面，不能修了又冒出来
 4. **交付完整** - 确认可运营后才交付，不要给半成品
+
+---
+
+## v1.2.0 新增功能
+
+### 1. 安全沙箱（Docker）
+
+所有用户代码执行都在Docker容器中进行，确保安全隔离。
+
+```python
+from lib.sandbox import DockerSandbox, ExecutionMode
+
+# 创建沙箱
+sandbox = DockerSandbox(ssh, ExecutionMode.BALANCED)
+
+# 在沙箱中执行代码
+stdout, stderr, exit_code = sandbox.execute_node("console.log('Hello')")
+
+# 带文件挂载执行
+stdout, stderr, exit_code = sandbox.execute_with_volume(
+    "npm test", "/path/to/project", "/app"
+)
+```
+
+**执行模式：**
+- `STRICT` - 强制Docker，最安全
+- `BALANCED` - 关键操作Docker，普通操作直接执行（默认）
+- `DIRECT` - 直接执行，最快但不安全
+
+### 2. 断点续传（Resume）
+
+支持任务暂停、恢复、回滚到任意检查点。
+
+```python
+from lib.resume import ResumeManager
+
+# 创建任务
+manager = ResumeManager()
+task = manager.create_task("music-website", "开发音乐网站")
+
+# 保存检查点
+manager.save_checkpoint("development", "创建项目结构")
+manager.save_checkpoint("development", "编写API代码")
+
+# 暂停任务
+manager.pause_task()
+
+# 恢复任务
+task = manager.resume_task("music-website")
+
+# 回滚到上一个检查点
+manager.rollback_last_checkpoint()
+```
+
+### 3. 重试机制（Retry）
+
+固定重试次数，超出后生成诊断报告，避免无限循环。
+
+```python
+from lib.retry import RetryManager, RetryConfig, MaxRetriesExceeded
+
+# 配置重试
+config = RetryConfig(max_retries=3, timeout=300)
+manager = RetryManager(config)
+
+try:
+    # 执行可能失败的操作
+    result = manager.execute_with_retry(
+        lambda: ssh.exec_command("npm install"),
+        "安装依赖"
+    )
+except MaxRetriesExceeded as e:
+    # 生成诊断报告
+    print(e.report.format_markdown())
+```
+
+**诊断报告示例：**
+```
+## ❌ 执行失败 - 诊断报告
+
+### 错误信息
+- 重试次数：3/3
+- 最后错误：npm ERR! code E404
+
+### 建议解决方案
+1. 检查包名是否正确
+2. 检查npm registry配置
+3. 检查网络连接
+
+### 请选择操作
+- 继续执行: 提供更多指导后继续
+- 回滚: 回滚到上一个检查点
+- 终止: 终止当前任务
+```
+
+### 4. 审计日志（Audit）
+
+详细记录所有执行操作，支持回滚。
+
+```python
+from lib.audit import AuditLogger
+
+# 创建日志
+logger = AuditLogger()
+logger.start_execution("deploy-001", {"server": "186.241.74.16"})
+
+# 记录命令
+logger.log_command("mkdir -p /www/site", exit_code=0, duration=0.1)
+logger.log_command("scp site.tar.gz root@server:/tmp/", exit_code=0, duration=2.5)
+
+# 结束执行
+logger.end_execution("completed")
+
+# 生成回滚脚本
+logger.save_rollback_script("rollback.sh")
+
+# 生成报告
+print(logger.generate_report())
+```
+
+**日志格式（JSON）：**
+```json
+{
+    "execution_id": "exec-20260530-001",
+    "start_time": "2026-05-30T10:00:00",
+    "commands": [
+        {
+            "seq": 1,
+            "command": "mkdir -p /www/site",
+            "exit_code": 0,
+            "duration": 0.1,
+            "reversible": true,
+            "rollback_cmd": "rmdir /www/site"
+        }
+    ],
+    "rollback_script": ["rmdir /www/site"]
+}
+```
+
+### 5. 核心执行器（Executor）
+
+整合所有功能的统一接口。
+
+```python
+from lib.executor import TaskExecutor
+
+# 创建执行器
+executor = TaskExecutor(
+    sandbox_mode="balanced",
+    max_retries=3,
+    timeout=300
+)
+
+# 连接服务器
+executor.connect("186.241.74.16", username="root", password="xxx")
+
+# 开始任务
+executor.start_task("music-website", "开发音乐网站")
+
+# 执行命令（自动重试、记录日志、支持回滚）
+result = executor.execute("npm install", "dependency_install")
+
+# 执行并自动回滚
+result = executor.execute_with_rollback(
+    "npm run build",
+    "rm -rf dist",
+    "build"
+)
+
+# 完成任务
+executor.complete_task()
+
+# 生成报告
+print(executor.generate_report())
+
+# 保存回滚脚本
+executor.save_rollback_script()
+```
+
+---
+
+## 文件结构
+
+```
+claude-autodev/
+├── SKILL.md           # 技能文档
+├── README.md          # 使用说明
+└── lib/               # 核心库
+    ├── __init__.py    # 模块导出
+    ├── sandbox.py     # 安全沙箱
+    ├── resume.py      # 断点续传
+    ├── retry.py       # 重试机制
+    ├── audit.py       # 审计日志
+    └── executor.py    # 核心执行器
+```

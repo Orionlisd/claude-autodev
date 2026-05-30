@@ -159,7 +159,49 @@ def docker_sandbox(ssh, command, image="node:18-alpine"):
 3. **修复彻底** - 修bug要考虑全面
 4. **交付完整** - 确认可运营后才交付
 
+## 核心模块
+
+### lib/ 目录结构
+
+```
+lib/
+├── __init__.py    # 模块导出
+├── sandbox.py     # 安全沙箱
+├── resume.py      # 断点续传
+├── retry.py       # 重试机制
+├── audit.py       # 审计日志
+└── executor.py    # 核心执行器
+```
+
+### 快速使用
+
+```python
+from lib.executor import TaskExecutor
+
+# 创建执行器
+executor = TaskExecutor(max_retries=3)
+
+# 连接服务器
+executor.connect("186.241.74.16", username="root", password="xxx")
+
+# 开始任务
+executor.start_task("my-task", "任务描述")
+
+# 执行命令（自动重试、记录日志）
+result = executor.execute("npm install")
+
+# 完成任务
+executor.complete_task()
+```
+
 ## 更新日志
+
+- v1.2.0 (2026-05-30) - 安全与可靠性
+  - 添加Docker安全沙箱，代码执行隔离
+  - 添加断点续传，支持任务暂停/恢复/回滚
+  - 添加重试机制，避免无限循环
+  - 添加审计日志，完整记录所有操作
+  - 添加诊断报告，失败时提供解决方案
 
 - v1.1.0 (2026-05-30) - 功能增强
   - 添加WebFetch能力，可搜索GitHub、获取文档
